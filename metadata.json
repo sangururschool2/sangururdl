@@ -1,0 +1,6 @@
+{
+  "name": "Sangurur Digital Learner Register",
+  "description": "Comprehensive education management, learner registration, cohort tracking, curriculum progression, and daily digital register for Sangurur Comprehensive School.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

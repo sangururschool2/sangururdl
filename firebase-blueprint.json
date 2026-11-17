@@ -1,0 +1,310 @@
+{
+  "entities": {
+    "Teacher": {
+      "title": "Teacher",
+      "description": "Registered teacher profile with assigned cohorts and system role",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "username": { "type": "string", "maxLength": 64 },
+        "email": { "type": "string", "maxLength": 128 },
+        "fullName": { "type": "string", "maxLength": 128 },
+        "role": { "type": "string", "enum": ["teacher", "admin", "super_admin"] },
+        "phone": { "type": "string", "maxLength": 32 },
+        "active": { "type": "boolean" },
+        "sessionRevokedAt": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["uid", "email", "fullName", "role"]
+    },
+    "TeacherCredential": {
+      "title": "TeacherCredential",
+      "description": "Hashed login credentials for staff teacher username/password authentication",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "username": { "type": "string", "maxLength": 64 },
+        "teacherUid": { "type": "string", "maxLength": 128 },
+        "passwordHash": { "type": "string", "maxLength": 256 },
+        "salt": { "type": "string", "maxLength": 128 },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["username", "teacherUid", "passwordHash", "salt"]
+    },
+    "Learner": {
+      "title": "Learner",
+      "description": "Student record enrolled in Sangurur Comprehensive School",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "fullName": { "type": "string", "maxLength": 128 },
+        "learnerId": { "type": "string", "maxLength": 64 },
+        "username": { "type": "string", "maxLength": 64 },
+        "gender": { "type": "string", "enum": ["male", "female", "other", "prefer_not_to_say"] },
+        "age": { "type": "number" },
+        "schoolName": { "type": "string", "maxLength": 128 },
+        "grade": { "type": "string", "maxLength": 64 },
+        "guardianContact": { "type": "string", "maxLength": 64 },
+        "assignedCohortIds": { "type": "array" },
+        "isFirstLogin": { "type": "boolean" },
+        "passwordHash": { "type": "string", "maxLength": 256 },
+        "salt": { "type": "string", "maxLength": 128 },
+        "active": { "type": "boolean" },
+        "sessionRevokedAt": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["fullName", "learnerId", "username"]
+    },
+    "Cohort": {
+      "title": "Cohort",
+      "description": "Learning group or class within the school",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 128 },
+        "code": { "type": "string", "maxLength": 64 },
+        "programme": { "type": "string", "maxLength": 128 },
+        "description": { "type": "string", "maxLength": 512 },
+        "learningLevel": { "type": "string", "maxLength": 64 },
+        "ageBracket": { "type": "string", "maxLength": 64 },
+        "startDate": { "type": "string" },
+        "endDate": { "type": "string" },
+        "teacherId": { "type": "string", "maxLength": 128 },
+        "teacherName": { "type": "string", "maxLength": 128 },
+        "curriculumId": { "type": "string", "maxLength": 128 },
+        "curriculumSnapshot": { "type": "object" },
+        "status": { "type": "string", "enum": ["active", "archived", "draft"] },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["name", "code", "programme", "teacherId", "status"]
+    },
+    "CohortMember": {
+      "title": "CohortMember",
+      "description": "Learner enrollment relationship in a cohort",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "cohortId": { "type": "string", "maxLength": 128 },
+        "learnerId": { "type": "string", "maxLength": 128 },
+        "learnerName": { "type": "string", "maxLength": 128 },
+        "learnerCode": { "type": "string", "maxLength": 64 },
+        "joinedAt": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "transferred", "completed"] }
+      },
+      "required": ["cohortId", "learnerId"]
+    },
+    "Curriculum": {
+      "title": "Curriculum",
+      "description": "Structured learning curriculum with learning areas, modules, and topics",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 128 },
+        "category": { "type": "string", "maxLength": 64 },
+        "description": { "type": "string", "maxLength": 1024 },
+        "level": { "type": "string", "maxLength": 64 },
+        "isTemplate": { "type": "boolean" },
+        "isPublished": { "type": "boolean" },
+        "version": { "type": "number" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "learningAreas": { "type": "array" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["title", "description", "learningAreas"]
+    },
+    "DailyRegister": {
+      "title": "DailyRegister",
+      "description": "Daily digital register record for a learner in a cohort session",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "cohortId": { "type": "string", "maxLength": 128 },
+        "cohortCode": { "type": "string", "maxLength": 64 },
+        "learnerDocId": { "type": "string", "maxLength": 128 },
+        "learnerId": { "type": "string", "maxLength": 64 },
+        "learnerName": { "type": "string", "maxLength": 128 },
+        "date": { "type": "string", "maxLength": 10 },
+        "timestamp": { "type": "string" },
+        "status": { "type": "string", "enum": ["present", "late", "absent", "excused"] },
+        "didStudy": { "type": "boolean" },
+        "nonStudyReason": { "type": "string", "maxLength": 256 },
+        "verificationStatus": { "type": "string", "enum": ["pending_verification", "verified", "corrected"] },
+        "learningAreaId": { "type": "string", "maxLength": 128 },
+        "learningAreaTitle": { "type": "string", "maxLength": 128 },
+        "moduleId": { "type": "string", "maxLength": 128 },
+        "moduleTitle": { "type": "string", "maxLength": 128 },
+        "topicId": { "type": "string", "maxLength": 128 },
+        "topicTitle": { "type": "string", "maxLength": 128 },
+        "topicDescription": { "type": "string", "maxLength": 512 },
+        "understandingLevel": { "type": "string", "enum": ["excellent", "good", "fair", "needs_support"] },
+        "reflectionLearned": { "type": "string", "maxLength": 1024 },
+        "reflectionActivity": { "type": "string", "maxLength": 1024 },
+        "reflectionDifficult": { "type": "string", "maxLength": 1024 },
+        "reflectionTeacherExplain": { "type": "string", "maxLength": 1024 },
+        "teacherNote": { "type": "string", "maxLength": 1024 },
+        "reviewedBy": { "type": "string", "maxLength": 128 },
+        "reviewedAt": { "type": "string" },
+        "correctionHistory": { "type": "array" }
+      },
+      "required": ["cohortId", "learnerDocId", "date", "status"]
+    },
+    "TeacherFeedback": {
+      "title": "TeacherFeedback",
+      "description": "Specific feedback or guidance given to a learner",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "teacherId": { "type": "string", "maxLength": 128 },
+        "teacherName": { "type": "string", "maxLength": 128 },
+        "learnerDocId": { "type": "string", "maxLength": 128 },
+        "cohortId": { "type": "string", "maxLength": 128 },
+        "topicId": { "type": "string", "maxLength": 128 },
+        "message": { "type": "string", "maxLength": 1024 },
+        "supportType": { "type": "string", "enum": ["encouragement", "revision", "intervention", "general"] },
+        "isRead": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["teacherId", "learnerDocId", "message"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Security and administrative audit trail",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "actorId": { "type": "string", "maxLength": 128 },
+        "actorName": { "type": "string", "maxLength": 128 },
+        "actorRole": { "type": "string", "maxLength": 64 },
+        "action": { "type": "string", "maxLength": 128 },
+        "targetEntity": { "type": "string", "maxLength": 128 },
+        "targetId": { "type": "string", "maxLength": 128 },
+        "details": { "type": "string", "maxLength": 2048 },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["actorId", "action", "timestamp"]
+    },
+    "SchoolSetting": {
+      "title": "SchoolSetting",
+      "description": "Configurable system preferences for Sangurur Comprehensive School",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "schoolName": { "type": "string", "maxLength": 128 },
+        "schoolMotto": { "type": "string", "maxLength": 128 },
+        "timezone": { "type": "string", "maxLength": 64 },
+        "allowLearnerReflections": { "type": "boolean" },
+        "lateCutoffTime": { "type": "string", "maxLength": 16 },
+        "attendanceCutoffTime": { "type": "string", "maxLength": 16 },
+        "contactEmail": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["schoolName", "schoolMotto"]
+    },
+    "Counter": {
+      "title": "Counter",
+      "description": "Atomic sequence counter for generating unique sequential learner Digital IDs",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "lastSeq": { "type": "number" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["lastSeq"]
+    },
+    "MasteryCertification": {
+      "title": "MasteryCertification",
+      "description": "Teacher-verified topic mastery certification record for a learner in a cohort",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "cohortId": { "type": "string", "maxLength": 128 },
+        "learnerId": { "type": "string", "maxLength": 128 },
+        "certified": { "type": "boolean" },
+        "certifiedBy": { "type": "string", "maxLength": 128 },
+        "certifiedByName": { "type": "string", "maxLength": 128 },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["cohortId", "learnerId", "certified"]
+    },
+    "WeeklyTimetable": {
+      "title": "WeeklyTimetable",
+      "description": "Weekly timetable schedule for holiday and term programmes with distinct topics per week",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "cohortId": { "type": "string", "maxLength": 128 },
+        "cohortCode": { "type": "string", "maxLength": 64 },
+        "programmeTerm": { "type": "string", "maxLength": 128 },
+        "weekNumber": { "type": "number" },
+        "weekLabel": { "type": "string", "maxLength": 128 },
+        "startDate": { "type": "string", "maxLength": 10 },
+        "endDate": { "type": "string", "maxLength": 10 },
+        "weeklyTheme": { "type": "string", "maxLength": 256 },
+        "topics": { "type": "array" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["cohortId", "programmeTerm", "weekNumber", "weekLabel", "startDate", "endDate", "topics"]
+    }
+  },
+  "firestore": {
+    "/teachers/{teacherId}": {
+      "schema": "Teacher",
+      "description": "Teacher profiles and administrator accounts"
+    },
+    "/teacherCredentials/{credId}": {
+      "schema": "TeacherCredential",
+      "description": "Salted PBKDF2 password hashes for staff teacher accounts"
+    },
+    "/learners/{learnerId}": {
+      "schema": "Learner",
+      "description": "Learner records, credentials and enrolled cohorts"
+    },
+    "/cohorts/{cohortId}": {
+      "schema": "Cohort",
+      "description": "Cohorts, classes and assigned curriculum snapshots"
+    },
+    "/cohortMembers/{memberId}": {
+      "schema": "CohortMember",
+      "description": "Learner cohort enrollments"
+    },
+    "/curricula/{curriculumId}": {
+      "schema": "Curriculum",
+      "description": "Predefined curriculum templates and custom teacher curricula"
+    },
+    "/dailyRegisters/{registerId}": {
+      "schema": "DailyRegister",
+      "description": "Daily digital attendance and learning entries submitted by learners and reviewed by teachers"
+    },
+    "/teacherFeedback/{feedbackId}": {
+      "schema": "TeacherFeedback",
+      "description": "Direct pedagogical feedback and intervention notes from teachers to learners"
+    },
+    "/auditLogs/{logId}": {
+      "schema": "AuditLog",
+      "description": "System audit trail for changes, attendance corrections, and user actions"
+    },
+    "/schoolSettings/{settingId}": {
+      "schema": "SchoolSetting",
+      "description": "Global settings for Sangurur Comprehensive School"
+    },
+    "/counters/{counterId}": {
+      "schema": "Counter",
+      "description": "Atomic sequence counters for concurrent Digital ID generation"
+    },
+    "/masteryCertifications/{certId}": {
+      "schema": "MasteryCertification",
+      "description": "Persisted teacher mastery certifications per learner and cohort"
+    },
+    "/weeklyTimetables/{entryId}": {
+      "schema": "WeeklyTimetable",
+      "description": "Weekly timetable schedules organized by programme/term and week number"
+    }
+  }
+}

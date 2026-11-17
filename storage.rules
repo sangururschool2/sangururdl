@@ -1,0 +1,64 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Global Deny Catch-All
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null && (
+        request.auth.token.email_verified == true ||
+        request.auth.token.firebase.sign_in_provider == 'custom'
+      );
+    }
+
+    function isBootstrappedAdmin() {
+      return isSignedIn() &&
+        request.auth.token.email_verified == true &&
+        request.auth.token.email == 'sangururschool10@gmail.com';
+    }
+
+    function isTeacherOrAdmin() {
+      return isBootstrappedAdmin() || (
+        isSignedIn() &&
+        firestore.exists(/databases/ai-studio-sangururdigitall-ec614d5a-13b5-4863-bd7d-92f4cb3d80e1/documents/teachers/$(request.auth.uid))
+      );
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() || (
+        isSignedIn() &&
+        firestore.exists(/databases/ai-studio-sangururdigitall-ec614d5a-13b5-4863-bd7d-92f4cb3d80e1/documents/teachers/$(request.auth.uid)) &&
+        firestore.get(/databases/ai-studio-sangururdigitall-ec614d5a-13b5-4863-bd7d-92f4cb3d80e1/documents/teachers/$(request.auth.uid)).data.role in ['admin', 'super_admin']
+      );
+    }
+
+    function isValidUpload(maxBytes) {
+      return request.resource != null &&
+             request.resource.size > 0 &&
+             request.resource.size <= maxBytes &&
+             request.resource.contentType.matches('^(image/(png|jpeg|webp)|application/pdf|text/csv|application/vnd\\.openxmlformats-officedocument\\.spreadsheetml\\.sheet)$');
+    }
+
+    // Official school assets: readable by authenticated users, writable only by administrators
+    match /school/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() && isValidUpload(10 * 1024 * 1024);
+    }
+
+    // Cohort resources & reports: readable by authenticated staff/learners, writable by authenticated teachers/admins
+    match /cohorts/{cohortId}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isTeacherOrAdmin() && isValidUpload(15 * 1024 * 1024);
+    }
+
+    // Learner-owned files & certificates: strictly restricted to owning learner or staff/admin
+    match /learners/{learnerId}/{allPaths=**} {
+      allow read: if isSignedIn() && (request.auth.uid == learnerId || isTeacherOrAdmin());
+      allow write: if isSignedIn() && (isAdmin() || request.auth.uid == learnerId) && isValidUpload(5 * 1024 * 1024);
+    }
+  }
+}

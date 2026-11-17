@@ -1,0 +1,362 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Deny Catch-All
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null && (
+        request.auth.token.email_verified == true ||
+        request.auth.token.firebase.sign_in_provider == 'custom'
+      );
+    }
+
+    function isBootstrappedAdmin() {
+      return isSignedIn() &&
+        request.auth.token.email_verified == true &&
+        request.auth.token.email == 'sangururschool10@gmail.com';
+    }
+
+    function teacherExists(uid) {
+      return exists(/databases/$(database)/documents/teachers/$(uid));
+    }
+
+    function teacherData(uid) {
+      return get(/databases/$(database)/documents/teachers/$(uid)).data;
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() || (
+        isSignedIn() &&
+        teacherExists(request.auth.uid) &&
+        teacherData(request.auth.uid).active != false &&
+        teacherData(request.auth.uid).role in ['admin', 'super_admin']
+      );
+    }
+
+    function isTeacherOrAdmin() {
+      return isAdmin() || (
+        isSignedIn() &&
+        teacherExists(request.auth.uid) &&
+        teacherData(request.auth.uid).active != false
+      );
+    }
+
+    // Staff account created without a Google UID or school admins can manage school-wide cohorts
+    function isStaffWideAccess() {
+      return isAdmin() || (
+        isSignedIn() &&
+        request.auth.uid == 'teacher_default_staff' &&
+        isTeacherOrAdmin()
+      );
+    }
+
+    function isLearnerUser() {
+      return isSignedIn() && exists(/databases/$(database)/documents/learners/$(request.auth.uid));
+    }
+
+    function ownsCohort(cohortId) {
+      return isStaffWideAccess() || (
+        isTeacherOrAdmin() &&
+        exists(/databases/$(database)/documents/cohorts/$(cohortId)) &&
+        get(/databases/$(database)/documents/cohorts/$(cohortId)).data.teacherId == request.auth.uid
+      );
+    }
+
+    // Teachers Collection: Authenticated staff profiles only
+    function isValidTeacher(data) {
+      return data.keys().hasAll(['uid', 'email', 'fullName', 'role']) &&
+             data.uid is string && data.uid.size() > 0 && data.uid.size() <= 128 &&
+             data.email is string && data.email.size() > 0 && data.email.size() <= 128 &&
+             data.fullName is string && data.fullName.size() > 0 && data.fullName.size() <= 128 &&
+             data.role in ['teacher', 'admin', 'super_admin'];
+    }
+
+    match /teachers/{teacherId} {
+      allow get: if isValidId(teacherId) && isSignedIn() && (request.auth.uid == teacherId || isTeacherOrAdmin());
+      allow list: if isSignedIn() && isTeacherOrAdmin();
+      allow create: if isValidId(teacherId) &&
+                       isSignedIn() &&
+                       isValidTeacher(incoming()) &&
+                       (
+                         (request.auth.uid == teacherId && (incoming().role == 'teacher' || isBootstrappedAdmin())) ||
+                         isAdmin()
+                       );
+      allow update: if isValidId(teacherId) &&
+                       isSignedIn() &&
+                       isValidTeacher(incoming()) &&
+                       incoming().uid == existing().uid &&
+                       (
+                         isAdmin() ||
+                         (request.auth.uid == teacherId && incoming().role == existing().role)
+                       );
+      allow delete: if isValidId(teacherId) && isAdmin();
+    }
+
+    // Teacher Credentials Collection: Strictly server-side Admin SDK only (never client-readable)
+    match /teacherCredentials/{credId} {
+      allow read, write: if false;
+    }
+
+    // Learners Collection: Authenticated staff + self-read for signed-in learner
+    function isValidLearner(data) {
+      return data.keys().hasAll(['fullName', 'learnerId', 'username']) &&
+             data.fullName is string && data.fullName.size() > 0 && data.fullName.size() <= 128 &&
+             data.learnerId is string && data.learnerId.size() > 0 && data.learnerId.size() <= 64 &&
+             data.username is string && data.username.size() > 0 && data.username.size() <= 64 &&
+             (!data.keys().hasAny(['schoolName']) || data.schoolName == null || (data.schoolName is string && data.schoolName.size() <= 128)) &&
+             (!data.keys().hasAny(['grade']) || data.grade == null || (data.grade is string && data.grade.size() <= 64));
+    }
+
+    match /learners/{learnerId} {
+      allow get: if isValidId(learnerId) && isSignedIn() && (isTeacherOrAdmin() || request.auth.uid == learnerId);
+      allow list: if isSignedIn() && isTeacherOrAdmin();
+      allow create: if isValidId(learnerId) && isSignedIn() && isAdmin() && isValidLearner(incoming());
+      allow update: if isValidId(learnerId) &&
+                       isSignedIn() &&
+                       isValidLearner(incoming()) &&
+                       (
+                         isAdmin() ||
+                         (isTeacherOrAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['assignedCohortIds', 'updatedAt']))
+                       );
+      allow delete: if isValidId(learnerId) && isAdmin();
+    }
+
+    // Atomic Sequence Counters: Server-side Admin SDK only
+    match /counters/{counterId} {
+      allow read, write: if false;
+    }
+
+    // Cohorts Collection: Enforces teacher cohort ownership + admin oversight
+    function isValidCohort(data) {
+      return data.keys().hasAll(['name', 'code', 'programme', 'teacherId', 'status']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 128 &&
+             data.code is string && data.code.size() > 0 && data.code.size() <= 64 &&
+             data.programme is string && data.programme.size() > 0 && data.programme.size() <= 128 &&
+             data.teacherId is string && data.teacherId.size() > 0 && data.teacherId.size() <= 128 &&
+             data.status in ['active', 'archived', 'draft'] &&
+             (!data.keys().hasAny(['ageBracket']) || data.ageBracket == null || (data.ageBracket is string && data.ageBracket.size() <= 64));
+    }
+
+    match /cohorts/{cohortId} {
+      allow get: if isValidId(cohortId) && isSignedIn() && (
+        isStaffWideAccess() ||
+        (isTeacherOrAdmin() && resource.data.teacherId == request.auth.uid) ||
+        (isLearnerUser() && (
+          cohortId in get(/databases/$(database)/documents/learners/$(request.auth.uid)).data.assignedCohortIds ||
+          resource.data.code in get(/databases/$(database)/documents/learners/$(request.auth.uid)).data.assignedCohortIds
+        ))
+      );
+      allow list: if isSignedIn() && (
+        isStaffWideAccess() ||
+        (isTeacherOrAdmin() && resource.data.teacherId == request.auth.uid)
+      );
+      allow create: if isValidId(cohortId) &&
+                       isSignedIn() &&
+                       isValidCohort(incoming()) &&
+                       (isAdmin() || (isTeacherOrAdmin() && incoming().teacherId == request.auth.uid));
+      allow update: if isValidId(cohortId) &&
+                       isSignedIn() &&
+                       isValidCohort(incoming()) &&
+                       incoming().createdAt == existing().createdAt &&
+                       (
+                         isStaffWideAccess() ||
+                         (isTeacherOrAdmin() && existing().teacherId == request.auth.uid && incoming().teacherId == existing().teacherId)
+                       );
+      allow delete: if isValidId(cohortId) && isAdmin();
+    }
+
+    // Cohort Members Collection: Enforces cohort ownership + learner self-read
+    function isValidCohortMember(data) {
+      return data.keys().hasAll(['cohortId', 'learnerId']) &&
+             data.cohortId is string && data.cohortId.size() > 0 && data.cohortId.size() <= 128 &&
+             data.learnerId is string && data.learnerId.size() > 0 && data.learnerId.size() <= 128;
+    }
+
+    match /cohortMembers/{memberId} {
+      allow get, list: if isSignedIn() && (
+        isStaffWideAccess() ||
+        ownsCohort(resource.data.cohortId) ||
+        (isLearnerUser() && resource.data.learnerId == request.auth.uid)
+      );
+      allow create, update: if isValidId(memberId) &&
+                               isSignedIn() &&
+                               isValidCohortMember(incoming()) &&
+                               ownsCohort(incoming().cohortId);
+      allow delete: if isValidId(memberId) &&
+                       isSignedIn() &&
+                       ownsCohort(existing().cohortId);
+    }
+
+    // Curricula Collection: Readable by authenticated staff & learners; editable by teachers/admins
+    function isValidCurriculum(data) {
+      return data.keys().hasAll(['title', 'description', 'learningAreas']) &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 128 &&
+             data.description is string && data.description.size() <= 2048 &&
+             data.learningAreas is list;
+    }
+
+    match /curricula/{curriculumId} {
+      allow get, list: if isSignedIn() && (isTeacherOrAdmin() || isLearnerUser());
+      allow create, update: if isValidId(curriculumId) &&
+                               isSignedIn() &&
+                               isValidCurriculum(incoming()) &&
+                               isTeacherOrAdmin();
+      allow delete: if isValidId(curriculumId) && isAdmin();
+    }
+
+    // Daily Registers Collection: Cohort-owned teacher writes + strict learner self-ownership
+    function isValidDailyRegister(data) {
+      return data.keys().hasAll(['cohortId', 'learnerDocId', 'date', 'status']) &&
+             data.cohortId is string && data.cohortId.size() > 0 && data.cohortId.size() <= 128 &&
+             data.learnerDocId is string && data.learnerDocId.size() > 0 && data.learnerDocId.size() <= 128 &&
+             data.date is string && data.date.size() == 10 &&
+             data.status in ['present', 'late', 'absent', 'excused'] &&
+             (!data.keys().hasAny(['didStudy']) || data.didStudy == null || data.didStudy is bool) &&
+             (!data.keys().hasAny(['nonStudyReason']) || data.nonStudyReason == null || (data.nonStudyReason is string && data.nonStudyReason.size() <= 256));
+    }
+
+    match /dailyRegisters/{registerId} {
+      allow get, list: if isSignedIn() && (
+        isStaffWideAccess() ||
+        ownsCohort(resource.data.cohortId) ||
+        (isLearnerUser() && resource.data.learnerDocId == request.auth.uid)
+      );
+      allow create: if isValidId(registerId) &&
+                       isSignedIn() &&
+                       isValidDailyRegister(incoming()) &&
+                       ownsCohort(incoming().cohortId);
+      allow update: if isValidId(registerId) &&
+                       isSignedIn() &&
+                       isValidDailyRegister(incoming()) &&
+                       incoming().cohortId == existing().cohortId &&
+                       incoming().learnerDocId == existing().learnerDocId &&
+                       incoming().date == existing().date &&
+                       ownsCohort(existing().cohortId);
+      allow delete: if isValidId(registerId) && isAdmin();
+    }
+
+    // Teacher Feedback Collection: Author teacher / learner recipient / admin only
+    function isValidTeacherFeedback(data) {
+      return data.keys().hasAll(['teacherId', 'learnerDocId', 'message']) &&
+             data.teacherId is string && data.teacherId.size() > 0 && data.teacherId.size() <= 128 &&
+             data.learnerDocId is string && data.learnerDocId.size() > 0 && data.learnerDocId.size() <= 128 &&
+             data.message is string && data.message.size() > 0 && data.message.size() <= 2048;
+    }
+
+    match /teacherFeedback/{feedbackId} {
+      allow get, list: if isSignedIn() && (
+        isStaffWideAccess() ||
+        (isTeacherOrAdmin() && resource.data.teacherId == request.auth.uid) ||
+        (isLearnerUser() && resource.data.learnerDocId == request.auth.uid)
+      );
+      allow create: if isValidId(feedbackId) &&
+                       isSignedIn() &&
+                       isValidTeacherFeedback(incoming()) &&
+                       isTeacherOrAdmin() &&
+                       (isAdmin() || incoming().teacherId == request.auth.uid);
+      allow update: if isValidId(feedbackId) &&
+                       isSignedIn() &&
+                       isValidTeacherFeedback(incoming()) &&
+                       (isAdmin() || (isTeacherOrAdmin() && existing().teacherId == request.auth.uid));
+      allow delete: if isValidId(feedbackId) && isAdmin();
+    }
+
+    // Mastery Certifications Collection: Cohort-owned teacher writes + learner self-read
+    function isValidMasteryCert(data) {
+      return data.keys().hasAll(['cohortId', 'learnerId', 'certified']) &&
+             data.cohortId is string && data.cohortId.size() <= 128 &&
+             data.learnerId is string && data.learnerId.size() <= 128 &&
+             data.certified is bool;
+    }
+
+    match /masteryCertifications/{certId} {
+      allow get, list: if isSignedIn() && (
+        isStaffWideAccess() ||
+        ownsCohort(resource.data.cohortId) ||
+        (isLearnerUser() && resource.data.learnerId == request.auth.uid)
+      );
+      allow create, update: if isValidId(certId) &&
+                               isSignedIn() &&
+                               isValidMasteryCert(incoming()) &&
+                               ownsCohort(incoming().cohortId);
+      allow delete: if isValidId(certId) && isAdmin();
+    }
+
+    // Audit Logs Collection: Append-only for staff/admins, strictly immutable
+    function isValidAuditLog(data) {
+      return data.keys().hasAll(['actorId', 'action', 'timestamp']) &&
+             data.actorId is string && data.actorId.size() > 0 && data.actorId.size() <= 128 &&
+             data.action is string && data.action.size() > 0 && data.action.size() <= 128;
+    }
+
+    match /auditLogs/{logId} {
+      allow get, list: if isSignedIn() && isTeacherOrAdmin();
+      allow create: if isValidId(logId) &&
+                       isSignedIn() &&
+                       isValidAuditLog(incoming()) &&
+                       isTeacherOrAdmin() &&
+                       (isAdmin() || incoming().actorId == request.auth.uid);
+      allow update, delete: if false;
+    }
+
+    // School Settings Collection: Readable by signed-in users; editable only by admins
+    function isValidSchoolSetting(data) {
+      return data.keys().hasAll(['schoolName', 'schoolMotto']) &&
+             data.schoolName is string && data.schoolName.size() > 0 && data.schoolName.size() <= 128 &&
+             data.schoolMotto is string && data.schoolMotto.size() > 0 && data.schoolMotto.size() <= 128;
+    }
+
+    match /schoolSettings/{settingId} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isValidId(settingId) &&
+                               isSignedIn() &&
+                               isValidSchoolSetting(incoming()) &&
+                               isAdmin();
+      allow delete: if isValidId(settingId) && isAdmin();
+    }
+
+    // Weekly Timetables Collection: Enforces teacher cohort ownership
+    function isValidWeeklyTimetable(data) {
+      return data.keys().hasAll(['cohortId', 'programmeTerm', 'weekNumber', 'weekLabel', 'startDate', 'endDate', 'topics']) &&
+             data.cohortId is string && data.cohortId.size() > 0 && data.cohortId.size() <= 128 &&
+             data.programmeTerm is string && data.programmeTerm.size() > 0 && data.programmeTerm.size() <= 128 &&
+             data.weekNumber is number && data.weekNumber >= 1 && data.weekNumber <= 52 &&
+             data.weekLabel is string && data.weekLabel.size() > 0 && data.weekLabel.size() <= 128 &&
+             data.startDate is string && data.startDate.size() == 10 &&
+             data.endDate is string && data.endDate.size() == 10 &&
+             data.topics is list && data.topics.size() <= 50;
+    }
+
+    match /weeklyTimetables/{entryId} {
+      allow get, list: if isSignedIn() && (
+        isStaffWideAccess() ||
+        ownsCohort(resource.data.cohortId)
+      );
+      allow create, update: if isValidId(entryId) &&
+                               isSignedIn() &&
+                               isValidWeeklyTimetable(incoming()) &&
+                               ownsCohort(incoming().cohortId);
+      allow delete: if isValidId(entryId) &&
+                       isSignedIn() &&
+                       ownsCohort(existing().cohortId);
+    }
+  }
+}
